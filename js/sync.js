@@ -57,17 +57,16 @@ const Sync = {
 
       const dismissed = this.loadDismissedMoysklad();
       const priorById = new Map(Store.state.tasks.map(t => [t.id, t]));
-      const rawTasks = data.tasks
+      const tasks = data.tasks
         .map(normalizeTaskFromSheet)
         .filter(t => !(t.source === 'moysklad' && dismissed.has(t.id)));
-      const grouped = groupMoySkladTasks(rawTasks);
 
       // Задачи МойСклад сервер всегда отдаёт "pending" (он не знает, что ты уже начал
       // таймер — это чисто клиентское состояние, никогда не пишется в Tasks). Без этого
       // любой фоновый pull (например, просто свернул и развернул приложение — событие
       // visibilitychange) обнулял бы уже идущий таймер. Переносим статус/таймер с
       // предыдущей копии той же задачи (id стабилен между синками).
-      grouped.forEach(t => {
+      tasks.forEach(t => {
         if (t.source !== 'moysklad') return;
         const prior = priorById.get(t.id);
         if (prior && (prior.status === 'in_progress' || prior.status === 'paused')) {
@@ -79,7 +78,7 @@ const Sync = {
         }
       });
 
-      Store.state.tasks = grouped;
+      Store.state.tasks = tasks;
       Object.assign(Store.state.settings, normalizeSettingsFromSheet(data.settings || {}));
       Store.saveLocalOnly();
       this.setStatus('ok');
@@ -171,39 +170,6 @@ function normalizeTaskFromSheet(row) {
 
   t.pauses = Array.isArray(t.pauses) ? t.pauses : [];
   return t;
-}
-
-// Несколько заданий МойСклад на один и тот же этап (например, 7 разных ширм на "сборка
-// ширмы") показываем одной задачей в очереди — иначе они забивают весь список почти
-// одинаковыми строками. Развёрнутый список вариантов остаётся в subItems, чтобы после
-// завершения показать чек-лист "сколько сделано по каждому" (см. app.js openChecklist).
-// Группируем, только если вариантов реально несколько — одиночную задачу не трогаем.
-function groupMoySkladTasks(tasks) {
-  const buckets = {};
-  const others = [];
-  tasks.forEach(t => {
-    if (t.source !== 'moysklad') { others.push(t); return; }
-    (buckets[t.productType] = buckets[t.productType] || []).push(t);
-  });
-
-  const grouped = [];
-  Object.keys(buckets).forEach(key => {
-    const items = buckets[key];
-    if (items.length === 1) { grouped.push(items[0]); return; }
-    const qty = items.reduce((sum, t) => sum + (t.qty || 0), 0);
-    const createdAt = items.map(t => t.createdAt).sort()[0];
-    grouped.push(Object.assign({}, items[0], {
-      id: 'msgrp_' + key,
-      title: key,
-      qty,
-      createdAt,
-      moyskladOrderId: null,
-      moyskladTaskNumber: null,
-      subItems: items.map(t => ({ id: t.id, title: t.title, qty: t.qty })),
-    }));
-  });
-
-  return [...others, ...grouped];
 }
 
 function normalizeSettingsFromSheet(settings) {

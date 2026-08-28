@@ -377,29 +377,6 @@ const Store = {
     return t;
   },
 
-  // Завершение сборной задачи из МойСклад (несколько вариантов сразу под одним этапом,
-  // см. groupMoySkladTasks) — doneMap это {subItemId: сколькоСделано}. В отличие от
-  // completeTask, не создаём задачу-остаток: раз задача не пишется обратно в МойСклад,
-  // недоделанные варианты сами всплывут заново на следующей синхронизации.
-  completeGroupedMoyskladTask(id, doneMap) {
-    const t = this.getTask(id);
-    if (!t) return null;
-    if (t.status === 'in_progress' && t.runStartedAt) {
-      t.activeSec += (Date.now() - new Date(t.runStartedAt).getTime()) / 1000;
-      t.runStartedAt = null;
-    }
-    const totalDone = Object.values(doneMap).reduce((a, b) => a + b, 0);
-    t.status = 'done';
-    t.completedAt = new Date().toISOString();
-    t.qtyDone = totalDone;
-    this.save();
-
-    if (typeof Sync !== 'undefined') {
-      (t.subItems || []).forEach(item => Sync.dismissMoysklad(item.id));
-    }
-    return t;
-  },
-
   elapsedSec(t) {
     if (t.status === 'in_progress' && t.runStartedAt) {
       return t.activeSec + (Date.now() - new Date(t.runStartedAt).getTime()) / 1000;
@@ -434,10 +411,7 @@ const Store = {
 
   removeTask(id) {
     const t = this.getTask(id);
-    if (t && t.source === 'moysklad' && typeof Sync !== 'undefined') {
-      if (t.subItems && t.subItems.length) t.subItems.forEach(item => Sync.dismissMoysklad(item.id));
-      else Sync.dismissMoysklad(t.id);
-    }
+    if (t && t.source === 'moysklad' && typeof Sync !== 'undefined') Sync.dismissMoysklad(t.id);
     this.state.tasks = this.state.tasks.filter(t => t.id !== id);
     this.save();
   },

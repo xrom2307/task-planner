@@ -37,7 +37,18 @@ const TASK_TEMPLATES = [
   { productType: 'Ширма',            stage: 'Гравировка',        equipmentId: 'laser_small' },
   { productType: 'Ширма',            stage: 'Шкурка',            equipmentId: 'drum_sander' },
   { productType: 'Ширма',            stage: 'Шкурка вручную',    equipmentId: 'hand_sander' },
+  { productType: 'Ширма',            stage: 'Продувка от пыли',  equipmentId: null },
   { productType: 'Ширма',            stage: 'Сборка',            equipmentId: null, portable: true },
+
+  // Заготовки под печать (UV-печать вместо покраски) — тот же самый МойСклад-этап
+  // резки, что и обычная Ширма, но дальше идёт другой физический цикл: без гравировки
+  // и сборки, зато с шпатлёвкой и временем на её высыхание. См. MOYSKLAD_CHAIN_MAP —
+  // именно вариант продукта (assortmentName) в самой задаче МойСклад решает, в какую
+  // из двух цепочек (эту или обычную Ширму) попадёт следующий этап после резки.
+  { productType: 'Ширма (под печать)', stage: 'Резка заготовки',        equipmentId: 'laser_big' },
+  { productType: 'Ширма (под печать)', stage: 'Шкурка',                 equipmentId: 'drum_sander' },
+  { productType: 'Ширма (под печать)', stage: 'Шпатлёвка',              equipmentId: null, postWaitHours: 3 },
+  { productType: 'Ширма (под печать)', stage: 'Шкурка после шпатлёвки', equipmentId: 'drum_sander' },
 
   { productType: 'Башня',            stage: 'Резка заготовки',   equipmentId: 'laser_big' },
   { productType: 'Башня',            stage: 'Сборка',            equipmentId: null, portable: true },
@@ -104,6 +115,31 @@ function nextTemplateStage(productType, currentStage, currentEquipmentId) {
     if (list[i].stage !== currentStage) return list[i];
   }
   return null;
+}
+
+// Задание из МойСклад иногда — только первый шаг более длинного физического цикла,
+// который дальше уже ведётся локально по TASK_TEMPLATES (см. suggestNextStage в
+// app.js). Сам этап МойСклад один на всех вариантов ("лазерная резка ширм+подарок"),
+// поэтому какая именно цепочка имеется в виду, различаем по названию продукта строки
+// (assortmentName — приходит с сервера как msAssortmentName, см. Code.gs
+// syncMoySkladTasks_/readMoySkladTasks_): "заготовка под покраску" ведёт в обычную
+// цепочку Ширмы (гравировка -> шкурка -> продувка -> сборка), "заготовка под печать" —
+// в отдельную цепочку без гравировки и сборки, зато с шпатлёвкой и отлёжкой.
+const MOYSKLAD_CHAIN_MAP = [
+  { stageTest: s => s.includes('резка') && s.includes('ширм'), variantTest: v => v.includes('под покраску'),
+    productType: 'Ширма', stage: 'Резка заготовки', equipmentId: 'laser_big' },
+  { stageTest: s => s.includes('резка') && s.includes('ширм'), variantTest: v => v.includes('под печать'),
+    productType: 'Ширма (под печать)', stage: 'Резка заготовки', equipmentId: 'laser_big' },
+];
+
+// Возвращает точку входа в локальную цепочку для завершённой задачи из МойСклад,
+// либо null, если для неё известной цепочки нет (тогда suggestNextStage просто
+// ничего не предложит, как и раньше для остальных МойСклад-этапов).
+function resolveMoyskladChainStart(msTask) {
+  const stage = (msTask.productType || '').toLowerCase();
+  const variant = (msTask.msAssortmentName || '').toLowerCase();
+  const entry = MOYSKLAD_CHAIN_MAP.find(e => e.stageTest(stage) && e.variantTest(variant));
+  return entry ? { productType: entry.productType, stage: entry.stage, equipmentId: entry.equipmentId } : null;
 }
 
 // Типы продукции, которые можно СОБИРАТЬ на дежурстве, если материалы взяты заранее.
