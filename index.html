@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#14161a" />
+<title>Планировщик</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<header class="topbar">
+  <div class="mode-switch" id="modeSwitch">
+    <button data-mode="work">Работа</button>
+    <button data-mode="duty">Дежурство</button>
+    <button data-mode="weekend">Выходной</button>
+  </div>
+  <div class="sync-bar" id="syncBar">
+    <span id="syncStatusText">Синхронизация не настроена</span>
+    <button id="syncConfigureBtn">Настроить</button>
+    <button id="syncNowBtn" hidden title="Синхронизировать сейчас">⟳</button>
+  </div>
+</header>
+
+<div id="unloadBanner" class="unload-banner" hidden></div>
+
+<main>
+
+  <!-- Станки, которые сейчас работают в фоне (зарядил, нажал пуск, ушёл на другую задачу) -->
+  <div id="cyclesWrap" class="cycles-wrap" hidden></div>
+
+  <!-- Текущая задача: таймер, или, если задача на паузе — управление паузой прямо здесь -->
+  <section id="block-current">
+    <div id="noCurrentTask" class="empty-state" hidden>
+      <p>Нет активной задачи — выбери что-нибудь из очереди ниже.</p>
+    </div>
+
+    <div id="currentTaskCard" class="task-card" hidden>
+      <div class="task-meta">
+        <span class="task-product" id="curProduct"></span>
+        <span class="task-stage" id="curStage"></span>
+      </div>
+      <h1 class="task-title" id="curTitle"></h1>
+      <div class="task-equipment" id="curEquipment"></div>
+
+      <!-- вид "в работе" -->
+      <div id="runningView">
+        <div class="timer-wrap">
+          <div class="timer" id="timerDisplay">00:00</div>
+          <div class="timer-target" id="timerTarget"></div>
+          <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        </div>
+        <div class="action-row">
+          <button class="btn btn-pause" id="pauseBtn">Пауза</button>
+          <button class="btn btn-done" id="doneBtn">Готово</button>
+        </div>
+      </div>
+
+      <!-- вид "на паузе" -->
+      <div id="pausedView" hidden>
+        <div class="timer-wrap">
+          <div class="timer pause-timer" id="pauseTimerDisplay">00:00</div>
+          <p class="hint">на паузе</p>
+        </div>
+        <div class="pause-reasons" id="pauseReasons"></div>
+        <input type="text" id="pauseCustomReason" class="custom-reason" placeholder="Своя причина..." hidden />
+        <button class="btn btn-primary" id="resumeBtn">Возобновить</button>
+      </div>
+
+      <button class="btn-text-danger" id="cancelBtn">Отменить задачу</button>
+    </div>
+  </section>
+
+  <!-- Следующая задача и очередь на сегодня -->
+  <section id="block-next">
+    <div id="nextSuggestionCard" class="task-card suggestion" hidden>
+      <div class="suggestion-label">Предложено дальше</div>
+      <div class="task-meta">
+        <span class="task-product" id="nextProduct"></span>
+        <span class="task-stage" id="nextStage"></span>
+      </div>
+      <h2 class="task-title" id="nextTitle"></h2>
+      <div class="task-equipment" id="nextEquipment"></div>
+      <div class="task-estimate" id="nextEstimate"></div>
+      <button class="btn btn-primary" id="startNextBtn">Начать</button>
+    </div>
+
+    <div id="noQueueMsg" class="empty-state" hidden>
+      <p>Нет доступных задач для текущего режима.</p>
+    </div>
+
+    <h3 class="section-title">Очередь на сегодня</h3>
+    <ul class="task-list" id="queueList"></ul>
+
+    <button class="btn btn-add" id="openAddForm">+ Добавить задачу</button>
+
+    <form id="addTaskForm" class="add-form" hidden>
+      <label>Тип продукции
+        <select id="f_productType">
+          <option value="">— своя задача —</option>
+        </select>
+      </label>
+      <label>Этап
+        <select id="f_stage"><option value="">—</option></select>
+      </label>
+      <label>Название (если своя задача)
+        <input type="text" id="f_title" placeholder="Например: файлы для подрозетников" />
+      </label>
+      <label>Количество (если партия, например 100 счётчиков)
+        <input type="number" id="f_qty" min="1" step="1" placeholder="необязательно" />
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" id="f_prepped" />
+        Материалы уже подготовлены (можно на дежурстве)
+      </label>
+      <label>Срок
+        <input type="date" id="f_due" />
+      </label>
+      <label class="checkbox-row">
+        <input type="checkbox" id="f_urgent" />
+        🔥 Срочно (форс-мажор, всегда наверху)
+      </label>
+      <div class="action-row">
+        <button type="button" class="btn" id="cancelAddForm">Отмена</button>
+        <button type="submit" class="btn btn-primary">Добавить</button>
+      </div>
+    </form>
+  </section>
+
+</main>
+
+<script src="js/constants.js"></script>
+<script src="js/store.js"></script>
+<script src="js/sync.js"></script>
+<script src="js/planner.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

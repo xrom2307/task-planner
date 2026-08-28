@@ -1,0 +1,5 @@
+_moysklad_techmaps_names.txt
+
+# Содержит реальный TOKEN синхронизации — репозиторий публичный (GitHub Pages),
+# этому файлу тут делать нечего. Живёт только локально и в самом Apps Script.
+google-apps-script/

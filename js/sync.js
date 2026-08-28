@@ -1,0 +1,139 @@
+// Синхронизация с Google Sheets через веб-приложение на Apps Script (см.
+// google-apps-script/Code.gs). Никаких OAuth-секретов на клиенте — просто URL + токен,
+// оба хранятся в localStorage этого браузера/устройства.
+//
+// Модель: localStorage — источник истины офлайн, всегда пишем туда синхронно.
+// Sheets — общий экземпляр между устройствами: тянем целиком при загрузке/возврате в
+// приложение, отправляем целиком (с задержкой) после каждого изменения. Одновременная
+// работа с двух устройств не предполагается (сутки/трое — ты физически в одном месте),
+// поэтому конфликтов "кто последний записал" осознанно не разруливаем сложнее этого.
+
+const SYNC_ENDPOINT_KEY = 'planner_sync_endpoint';
+const SYNC_TOKEN_KEY = 'planner_sync_token';
+const PUSH_DEBOUNCE_MS = 1500;
+
+const Sync = {
+  endpoint: null,
+  token: null,
+  pushTimer: null,
+  status: 'idle', // idle | syncing | ok | error | offline
+  lastSyncedAt: null,
+  onStatusChange: null,
+
+  loadConfig() {
+    this.endpoint = localStorage.getItem(SYNC_ENDPOINT_KEY) || null;
+    this.token = localStorage.getItem(SYNC_TOKEN_KEY) || null;
+    return this.isConfigured();
+  },
+
+  configure(endpoint, token) {
+    this.endpoint = endpoint || null;
+    this.token = token || null;
+    if (this.endpoint) localStorage.setItem(SYNC_ENDPOINT_KEY, this.endpoint);
+    else localStorage.removeItem(SYNC_ENDPOINT_KEY);
+    if (this.token) localStorage.setItem(SYNC_TOKEN_KEY, this.token);
+    else localStorage.removeItem(SYNC_TOKEN_KEY);
+  },
+
+  isConfigured() {
+    return !!(this.endpoint && this.token);
+  },
+
+  setStatus(status) {
+    this.status = status;
+    if (status === 'ok') this.lastSyncedAt = new Date();
+    if (this.onStatusChange) this.onStatusChange(status);
+  },
+
+  async pull() {
+    if (!this.isConfigured()) return false;
+    this.setStatus('syncing');
+    try {
+      const res = await fetch(`${this.endpoint}?t=${Date.now()}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (!Array.isArray(data.tasks)) throw new Error('bad response');
+
+      Store.state.tasks = data.tasks.map(normalizeTaskFromSheet);
+      Object.assign(Store.state.settings, normalizeSettingsFromSheet(data.settings || {}));
+      Store.saveLocalOnly();
+      this.setStatus('ok');
+      return true;
+    } catch (e) {
+      console.warn('Sync pull failed', e);
+      this.setStatus(navigator.onLine ? 'error' : 'offline');
+      return false;
+    }
+  },
+
+  // Вызывается из Store.save() после каждого изменения — с задержкой, чтобы не долбить
+  // Apps Script на каждый чих (например, тикающий таймер сам по себе save() не дёргает,
+  // но быстрая последовательность действий — пауза сразу после старта и т.п. — могла бы).
+  schedulePush() {
+    if (!this.isConfigured()) return;
+    clearTimeout(this.pushTimer);
+    this.pushTimer = setTimeout(() => this.push(), PUSH_DEBOUNCE_MS);
+  },
+
+  async push() {
+    if (!this.isConfigured()) return false;
+    this.setStatus('syncing');
+    try {
+      await fetch(this.endpoint, {
+        method: 'POST',
+        // text/plain, а не application/json — иначе браузер шлёт CORS-preflight (OPTIONS),
+        // а Apps Script Web App его не обрабатывает и запрос падает.
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          token: this.token,
+          tasks: Store.state.tasks,
+          settings: Store.state.settings,
+        }),
+      });
+      this.setStatus('ok');
+      return true;
+    } catch (e) {
+      console.warn('Sync push failed', e);
+      this.setStatus(navigator.onLine ? 'error' : 'offline');
+      return false;
+    }
+  },
+};
+
+// Sheets отдаёт пустые ячейки как '' — приводим обратно к null/числам/булевым,
+// чтобы задачи вели себя так же, как только что созданные локально.
+function normalizeTaskFromSheet(row) {
+  const t = Object.assign({}, row);
+
+  ['equipmentId', 'moyskladOrderId', 'dueDate', 'startedAt', 'completedAt', 'runStartedAt',
+   'resultProductType', 'resultStage', 'resultEquipmentId'].forEach(f => {
+    if (t[f] === '' || t[f] === undefined) t[f] = null;
+  });
+
+  ['qty', 'qtyDone', 'resultQty'].forEach(f => {
+    t[f] = (t[f] === '' || t[f] === null || t[f] === undefined) ? null : Number(t[f]);
+  });
+
+  t.manualBoost = t.manualBoost === '' || t.manualBoost == null ? 0 : Number(t.manualBoost);
+  t.activeSec = t.activeSec === '' || t.activeSec == null ? 0 : Number(t.activeSec);
+  t.estimateSec = t.estimateSec === '' || t.estimateSec == null ? null : Number(t.estimateSec);
+
+  ['portable', 'materialsPrepped', 'urgent'].forEach(f => {
+    t[f] = t[f] === true || t[f] === 'TRUE' || t[f] === 'true';
+  });
+
+  // На случай если Sheets всё же успел превратить строку в дату несмотря на текстовый формат.
+  ['dueDate', 'createdAt', 'startedAt', 'completedAt', 'runStartedAt'].forEach(f => {
+    if (t[f] instanceof Date) t[f] = t[f].toISOString();
+  });
+
+  t.pauses = Array.isArray(t.pauses) ? t.pauses : [];
+  return t;
+}
+
+function normalizeSettingsFromSheet(settings) {
+  const out = Object.assign({}, settings);
+  if (out.lastEquipmentId === '') out.lastEquipmentId = null;
+  if (out.lastMaintenanceMonth === '') out.lastMaintenanceMonth = null;
+  return out;
+}
