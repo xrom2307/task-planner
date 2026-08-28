@@ -134,3 +134,19 @@ const MODES = {
 };
 
 const DEFAULT_CLEANUP_SEC = 10 * 60; // 10 минут по умолчанию, пока нет своей истории
+
+// Категории для задач из МойСклад (Фаза 3) — чисто для отображения в очереди
+// (бейдж вместо станка, которого у них пока нет), порядок проверки важен:
+// подрозетники — отдельная линия, даже если физически режутся на лазере/ЧПУ,
+// их не нужно путать с "лазерными станками" основного цеха.
+const MOYSKLAD_CATEGORIES = [
+  { label: 'Подрозетники',    test: s => s.includes('подрозетник') },
+  { label: 'Лазерные станки', test: s => s.includes('лазер') || s.includes('гравировк') },
+  { label: 'Сборка',          test: s => s.includes('сборка') || s.includes('склейка') },
+];
+
+function moyskladCategory(task) {
+  const s = `${task.productType || ''} ${task.title || ''}`.toLowerCase();
+  const found = MOYSKLAD_CATEGORIES.find(c => c.test(s));
+  return found ? found.label : 'Прочее';
+}

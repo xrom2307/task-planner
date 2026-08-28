@@ -212,7 +212,8 @@ function renderCurrent() {
   document.getElementById('curProduct').textContent = productLabel(t);
   document.getElementById('curStage').textContent = t.source === 'cleanup' ? '' : (t.stage || '');
   document.getElementById('curTitle').textContent = displayTitle(t);
-  document.getElementById('curEquipment').textContent = equipmentName(t.equipmentId) ? `Оборудование: ${equipmentName(t.equipmentId)}` : '';
+  document.getElementById('curEquipment').textContent = equipmentName(t.equipmentId) ? `Оборудование: ${equipmentName(t.equipmentId)}` :
+    (t.source === 'moysklad' ? moyskladCategory(t) : '');
 
   const isPaused = t.status === 'paused';
   document.getElementById('runningView').hidden = isPaused;
@@ -289,7 +290,8 @@ function renderQueueAndNext() {
     document.getElementById('nextProduct').textContent = productLabel(t);
     document.getElementById('nextStage').textContent = t.source === 'cleanup' ? '' : (t.stage || '');
     document.getElementById('nextTitle').textContent = displayTitle(t);
-    document.getElementById('nextEquipment').textContent = equipmentName(t.equipmentId) ? `Оборудование: ${equipmentName(t.equipmentId)}` : '';
+    document.getElementById('nextEquipment').textContent = equipmentName(t.equipmentId) ? `Оборудование: ${equipmentName(t.equipmentId)}` :
+      (t.source === 'moysklad' ? moyskladCategory(t) : '');
     document.getElementById('nextEstimate').textContent = `Ориентир: ${fmt(t.estimateSec || Store.estimateFor(t))}`;
     document.getElementById('startNextBtn').onclick = () => startTaskAndShow(t.id);
   }
@@ -311,6 +313,7 @@ function renderQueueAndNext() {
     sub.className = 'ql-sub';
     const bits = [];
     if (equipmentName(t.equipmentId)) bits.push(equipmentName(t.equipmentId));
+    else if (t.source === 'moysklad') bits.push(moyskladCategory(t));
     bits.push(`~${fmt(t.estimateSec || Store.estimateFor(t))}`);
     if (t.dueDate) bits.push(`до ${t.dueDate}`);
     if (t.source === 'moysklad') bits.push(`МойСклад №${t.moyskladTaskNumber || ''}`);
