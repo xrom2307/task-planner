@@ -18,6 +18,45 @@ function displayTitle(t) {
   return t.qty ? `${base} (${t.qty} шт)` : base;
 }
 
+// id сборной задачи (см. groupMoySkladTasks), пока открыт чек-лист сверки — null,
+// когда закрыт. Отдельная переменная, а не поле в Store, потому что это чисто
+// UI-состояние текущего экрана, не переживающее перезагрузку и не участвующее в синке.
+let checklistTaskId = null;
+
+function openChecklist(t) {
+  checklistTaskId = t.id;
+  const container = document.getElementById('checklistItems');
+  container.innerHTML = '';
+  t.subItems.forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'checklist-row';
+    const title = document.createElement('div');
+    title.className = 'cl-title';
+    title.textContent = item.title;
+    const plan = document.createElement('div');
+    plan.className = 'cl-plan';
+    plan.textContent = `план ${item.qty}`;
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '0';
+    input.step = '1';
+    input.value = String(item.qty);
+    input.dataset.subId = item.id;
+    row.appendChild(title);
+    row.appendChild(plan);
+    row.appendChild(input);
+    container.appendChild(row);
+  });
+  document.getElementById('runningView').hidden = true;
+  document.getElementById('pausedView').hidden = true;
+  document.getElementById('checklistView').hidden = false;
+}
+
+function closeChecklist() {
+  checklistTaskId = null;
+  document.getElementById('checklistView').hidden = true;
+}
+
 function productLabel(t) {
   if (t.productType) return t.productType;
   if (t.source === 'cleanup') return 'Уборка';
@@ -215,9 +254,14 @@ function renderCurrent() {
   document.getElementById('curEquipment').textContent = equipmentName(t.equipmentId) ? `Оборудование: ${equipmentName(t.equipmentId)}` :
     (t.source === 'moysklad' ? moyskladCategory(t) : '');
 
+  // Сверка открыта — не трогаем видимость вложенных view, иначе следующий же тик
+  // renderAll (раз в секунду) тут же захлопнет её обратно в running/paused.
+  if (checklistTaskId) return;
+
   const isPaused = t.status === 'paused';
   document.getElementById('runningView').hidden = isPaused;
   document.getElementById('pausedView').hidden = !isPaused;
+  document.getElementById('checklistView').hidden = true;
 
   if (isPaused) {
     renderPauseControls(t);
@@ -316,7 +360,9 @@ function renderQueueAndNext() {
     else if (t.source === 'moysklad') bits.push(moyskladCategory(t));
     bits.push(`~${fmt(t.estimateSec || Store.estimateFor(t))}`);
     if (t.dueDate) bits.push(`до ${t.dueDate}`);
-    if (t.source === 'moysklad') bits.push(`МойСклад №${t.moyskladTaskNumber || ''}`);
+    if (t.source === 'moysklad') {
+      bits.push(t.subItems ? `${t.subItems.length} вариантов` : `МойСклад №${t.moyskladTaskNumber || ''}`);
+    }
     sub.textContent = bits.join(' · ');
     main.appendChild(title);
     main.appendChild(sub);
@@ -435,6 +481,23 @@ function initEvents() {
     renderAll();
   });
 
+  document.getElementById('checklistCancelBtn').addEventListener('click', () => {
+    closeChecklist();
+    renderAll();
+  });
+
+  document.getElementById('checklistSubmitBtn').addEventListener('click', () => {
+    const id = checklistTaskId;
+    if (!id) return;
+    const doneMap = {};
+    document.querySelectorAll('#checklistItems input').forEach(inp => {
+      doneMap[inp.dataset.subId] = Math.max(0, parseInt(inp.value, 10) || 0);
+    });
+    closeChecklist();
+    Store.completeGroupedMoyskladTask(id, doneMap);
+    renderAll();
+  });
+
   document.getElementById('resumeBtn').addEventListener('click', () => {
     const t = Store.state.tasks.find(t => t.status === 'paused');
     if (!t) return;
@@ -445,6 +508,11 @@ function initEvents() {
   document.getElementById('doneBtn').addEventListener('click', () => {
     const t = Store.currentTask();
     if (!t) return;
+
+    if (t.subItems && t.subItems.length) {
+      openChecklist(t);
+      return;
+    }
 
     let qtyDone = null;
     if (t.qty) {
