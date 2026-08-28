@@ -29,7 +29,7 @@ Task shape:
   id, title,
   productType, stage,          // может быть пусто для произвольной задачи
   equipmentId,                 // null для computer/portable задач
-  source: 'manual' | 'sklad' | 'cleanup',
+  source: 'manual' | 'moysklad' | 'cleanup' | 'maintenance',
   portable: bool,               // можно делать без станка (сборка руками/за компом)
   materialsPrepped: bool,       // для portable: материалы уже взяты с собой на дежурство
   dueDate: 'YYYY-MM-DD' | null,
@@ -355,6 +355,9 @@ const Store = {
     t.completedAt = new Date().toISOString();
     if (t.qty) t.qtyDone = Math.max(0, Math.min(t.qty, qtyDone == null ? t.qty : qtyDone));
     this.state.settings.lastEquipmentId = t.equipmentId || this.state.settings.lastEquipmentId;
+    // Задача из МойСклад v1 — только чтение: завершение тут не продвигает статус там,
+    // поэтому запоминаем локально, что она уже сделана, иначе воскреснет при следующем pull.
+    if (t.source === 'moysklad' && typeof Sync !== 'undefined') Sync.dismissMoysklad(t.id);
     this.save();
 
     if (t.qty && t.qtyDone < t.qty) {
@@ -407,6 +410,8 @@ const Store = {
   },
 
   removeTask(id) {
+    const t = this.getTask(id);
+    if (t && t.source === 'moysklad' && typeof Sync !== 'undefined') Sync.dismissMoysklad(t.id);
     this.state.tasks = this.state.tasks.filter(t => t.id !== id);
     this.save();
   },

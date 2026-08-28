@@ -313,6 +313,7 @@ function renderQueueAndNext() {
     if (equipmentName(t.equipmentId)) bits.push(equipmentName(t.equipmentId));
     bits.push(`~${fmt(t.estimateSec || Store.estimateFor(t))}`);
     if (t.dueDate) bits.push(`до ${t.dueDate}`);
+    if (t.source === 'moysklad') bits.push(`МойСклад №${t.moyskladTaskNumber || ''}`);
     sub.textContent = bits.join(' · ');
     main.appendChild(title);
     main.appendChild(sub);

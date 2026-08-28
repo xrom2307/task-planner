@@ -10,6 +10,7 @@
 
 const SYNC_ENDPOINT_KEY = 'planner_sync_endpoint';
 const SYNC_TOKEN_KEY = 'planner_sync_token';
+const DISMISSED_MOYSKLAD_KEY = 'planner_dismissed_moysklad';
 const PUSH_DEBOUNCE_MS = 1500;
 
 const Sync = {
@@ -54,7 +55,10 @@ const Sync = {
       if (data.error) throw new Error(data.error);
       if (!Array.isArray(data.tasks)) throw new Error('bad response');
 
-      Store.state.tasks = data.tasks.map(normalizeTaskFromSheet);
+      const dismissed = this.loadDismissedMoysklad();
+      Store.state.tasks = data.tasks
+        .map(normalizeTaskFromSheet)
+        .filter(t => !(t.source === 'moysklad' && dismissed.has(t.id)));
       Object.assign(Store.state.settings, normalizeSettingsFromSheet(data.settings || {}));
       Store.saveLocalOnly();
       this.setStatus('ok');
@@ -64,6 +68,23 @@ const Sync = {
       this.setStatus(navigator.onLine ? 'error' : 'offline');
       return false;
     }
+  },
+
+  // Задачи из МойСклад (Фаза 3, только чтение) сервер отдаёт заново на каждый pull —
+  // он не знает, что ты её уже сделал. "Скрыто" храним чисто локально (не синкается),
+  // это просто фильтр от повторного показа на этом устройстве, не источник истины.
+  loadDismissedMoysklad() {
+    try {
+      return new Set(JSON.parse(localStorage.getItem(DISMISSED_MOYSKLAD_KEY) || '[]'));
+    } catch (e) {
+      return new Set();
+    }
+  },
+
+  dismissMoysklad(id) {
+    const set = this.loadDismissedMoysklad();
+    set.add(id);
+    localStorage.setItem(DISMISSED_MOYSKLAD_KEY, JSON.stringify([...set]));
   },
 
   // Вызывается из Store.save() после каждого изменения — с задержкой, чтобы не долбить
