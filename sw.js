@@ -1,4 +1,4 @@
-const CACHE = 'planner-v8';
+const CACHE = 'planner-v9';
 const FILES = [
   './',
   './index.html',
@@ -23,9 +23,13 @@ self.addEventListener('activate', (e) => {
   self.clients.claim();
 });
 
-// Network-first: пока прототип активно меняется, важнее сразу видеть свежую
-// версию, чем офлайн-доступ. Кэш — только подстраховка на случай отсутствия сети.
+// Чужие домены (Apps Script API и т.п.) не трогаем вообще — пусть идут напрямую в сеть.
+// На iOS Safari перехват кросс-доменных запросов через respondWith(fetch(...)) ломает CORS
+// (запрос из приложения падает, хотя тот же URL открывается напрямую в браузере без проблем).
+// Кэшируем только свои же файлы того же источника (network-first, кэш — подстраховка офлайн).
 self.addEventListener('fetch', (e) => {
+  if (new URL(e.request.url).origin !== self.location.origin) return;
+
   e.respondWith(
     fetch(e.request)
       .then(res => {

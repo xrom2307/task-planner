@@ -49,7 +49,7 @@ const Sync = {
     if (!this.isConfigured()) return false;
     this.setStatus('syncing');
     try {
-      const res = await fetch(`${this.endpoint}?t=${Date.now()}`);
+      const res = await fetch(`${this.endpoint}?token=${encodeURIComponent(this.token)}&t=${Date.now()}`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       if (!Array.isArray(data.tasks)) throw new Error('bad response');
@@ -135,5 +135,10 @@ function normalizeSettingsFromSheet(settings) {
   const out = Object.assign({}, settings);
   if (out.lastEquipmentId === '') out.lastEquipmentId = null;
   if (out.lastMaintenanceMonth === '') out.lastMaintenanceMonth = null;
+  // На случай если Sheets всё же превратил 'YYYY-MM' в дату несмотря на текстовый формат столбца.
+  if (out.lastMaintenanceMonth instanceof Date) {
+    const d = out.lastMaintenanceMonth;
+    out.lastMaintenanceMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
   return out;
 }
