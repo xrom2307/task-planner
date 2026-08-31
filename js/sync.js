@@ -66,9 +66,10 @@ const Sync = {
         localStorage.setItem(DISMISSED_MOYSKLAD_KEY, JSON.stringify([...dismissed]));
       }
       const priorById = new Map(Store.state.tasks.map(t => [t.id, t]));
-      const tasks = data.tasks
+      const rawTasks = data.tasks
         .map(normalizeTaskFromSheet)
         .filter(t => !(t.source === 'moysklad' && dismissed.has(t.id)));
+      const tasks = mergeShirmaRezkaTasks(rawTasks);
 
       // Задачи МойСклад сервер всегда отдаёт "pending" (он не знает, что ты уже начал
       // таймер — это чисто клиентское состояние, никогда не пишется в Tasks). Без этого
@@ -208,6 +209,33 @@ function normalizeTaskFromSheet(row) {
 
   t.pauses = Array.isArray(t.pauses) ? t.pauses : [];
   return t;
+}
+
+// Резка ширм "под покраску" и "под печать" — физически одна и та же операция (обычная
+// резка на станке), различаются только тем, куда заготовка пойдёт ДАЛЬШЕ (см.
+// MOYSKLAD_CHAIN_MAP в constants.js) — резать и считать их вместе логичнее, а разбивать
+// уже при завершении (см. app.js handleMergedShirmaRezkaDone). Если в моменте есть только
+// один вариант — сливать нечего, показываем как обычную одиночную задачу.
+function mergeShirmaRezkaTasks(tasks) {
+  const isShirmaRezka = t => t.source === 'moysklad' &&
+    /резка/i.test(t.productType || '') && /ширм/i.test(t.productType || '');
+  const pokraska = tasks.find(t => isShirmaRezka(t) && (t.msAssortmentName || '').toLowerCase().includes('под покраску'));
+  const pechat = tasks.find(t => isShirmaRezka(t) && (t.msAssortmentName || '').toLowerCase().includes('под печать'));
+  if (!pokraska || !pechat) return tasks;
+
+  const merged = Object.assign({}, pokraska, {
+    id: 'msmerge_' + pokraska.id + '_' + pechat.id,
+    title: pokraska.productType,
+    qty: (pokraska.qty || 0) + (pechat.qty || 0),
+    createdAt: [pokraska.createdAt, pechat.createdAt].sort()[0],
+    moyskladTaskNumber: [pokraska.moyskladTaskNumber, pechat.moyskladTaskNumber].filter(Boolean).join('/'),
+    mergedParts: [
+      { id: pokraska.id, variant: 'покраску', qty: pokraska.qty || 0 },
+      { id: pechat.id, variant: 'печать', qty: pechat.qty || 0 },
+    ],
+  });
+
+  return tasks.filter(t => t.id !== pokraska.id && t.id !== pechat.id).concat([merged]);
 }
 
 function normalizeSettingsFromSheet(settings) {

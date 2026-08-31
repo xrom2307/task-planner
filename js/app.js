@@ -127,6 +127,50 @@ function promptShirmaEngravingChoice() {
   return SHIRMA_ENGRAVING_OPTIONS[idx] || null;
 }
 
+// Завершение объединённой задачи "резка ширм+подарок" (см. Sync.mergeShirmaRezkaTasks) —
+// вместо одного числа "сколько сделано" спрашиваем разбивку на два варианта, потому что
+// дальше у них РАЗНЫЕ цепочки (см. MOYSKLAD_CHAIN_MAP). Выбор станка для гравировки, как и
+// везде, запрашиваем ДО завершения задачи — отмена ничего не портит (см. resolveNextStage).
+function handleMergedShirmaRezkaDone(t) {
+  const pokraska = t.mergedParts.find(p => p.variant === 'покраску');
+  const pechat = t.mergedParts.find(p => p.variant === 'печать');
+
+  const pInput = prompt(`Сколько нарезано под покраску (из ${pokraska.qty})?`, String(pokraska.qty));
+  if (pInput === null) return;
+  const pQty = Math.max(0, Math.min(pokraska.qty, parseInt(pInput, 10) || 0));
+
+  const cInput = prompt(`Сколько нарезано под печать (из ${pechat.qty})?`, String(pechat.qty));
+  if (cInput === null) return;
+  const cQty = Math.max(0, Math.min(pechat.qty, parseInt(cInput, 10) || 0));
+
+  let engravingChoice = null;
+  if (pQty > 0) {
+    engravingChoice = promptShirmaEngravingChoice();
+    if (!engravingChoice) return; // отмена — задача остаётся активной целиком
+  }
+
+  Store.completeTask(t.id, pQty + cQty);
+  t.mergedParts.forEach(part => { if (typeof Sync !== 'undefined') Sync.dismissMoysklad(part.id); });
+
+  if (pQty > 0) {
+    engravingChoice.passes.forEach(p => {
+      Store.addTask({
+        productType: 'Ширма', stage: p.stage, title: p.title || '',
+        equipmentId: engravingChoice.equipmentId, source: 'manual',
+        qty: pQty, estimateSec: p.estimateSec,
+      });
+    });
+  }
+  if (cQty > 0) {
+    const next = nextTemplateStage('Ширма (под печать)', 'Резка заготовки', 'laser_big');
+    if (next) {
+      Store.addTask({ productType: next.productType, stage: next.stage, equipmentId: next.equipmentId, source: 'manual', qty: cQty });
+    }
+  }
+
+  renderAll();
+}
+
 // Список задач из МойСклад, удалённых через ✕ на этом устройстве (см. Store.removeTask/
 // Sync.markRemovedMoysklad) — по умолчанию предлагает САМУЮ ПОСЛЕДНЮЮ (частый случай:
 // один случайный тап), но по названию можно выбрать и более раннюю, если между делом
@@ -520,6 +564,11 @@ function initEvents() {
   document.getElementById('doneBtn').addEventListener('click', () => {
     const t = Store.currentTask();
     if (!t) return;
+
+    if (t.mergedParts) {
+      handleMergedShirmaRezkaDone(t);
+      return;
+    }
 
     // Гравировка ширмы требует выбора станка — спрашиваем ДО завершения задачи, а не
     // после (как обычно делает suggestNextStage), иначе отмена диалога (или его случайное

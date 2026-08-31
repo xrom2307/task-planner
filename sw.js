@@ -1,4 +1,4 @@
-const CACHE = 'planner-v18';
+const CACHE = 'planner-v19';
 const FILES = [
   './',
   './index.html',
