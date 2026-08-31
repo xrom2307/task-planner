@@ -11,6 +11,7 @@
 const SYNC_ENDPOINT_KEY = 'planner_sync_endpoint';
 const SYNC_TOKEN_KEY = 'planner_sync_token';
 const DISMISSED_MOYSKLAD_KEY = 'planner_dismissed_moysklad';
+const REMOVED_MOYSKLAD_KEY = 'planner_removed_moysklad';
 const PUSH_DEBOUNCE_MS = 1500;
 
 const Sync = {
@@ -56,6 +57,14 @@ const Sync = {
       if (!Array.isArray(data.tasks)) throw new Error('bad response');
 
       const dismissed = this.loadDismissedMoysklad();
+      // Разовое восстановление: "резка ширм+подарок под покраску" была случайно удалена
+      // через ✕ ДО того, как появился нормальный список для восстановления (см. ↺ и
+      // restoreDismissedMoysklad) — список на телефоне тогда ещё пуст, поэтому снимаем
+      // именно эту задачу из "скрытых" напрямую, один раз. Можно удалить этот блок
+      // следующим коммитом, как только задача вернётся в очередь.
+      if (dismissed.delete('ms_881e753b-9f9e-11f1-0a80-197a00bd3d73')) {
+        localStorage.setItem(DISMISSED_MOYSKLAD_KEY, JSON.stringify([...dismissed]));
+      }
       const priorById = new Map(Store.state.tasks.map(t => [t.id, t]));
       const tasks = data.tasks
         .map(normalizeTaskFromSheet)
@@ -107,16 +116,33 @@ const Sync = {
     localStorage.setItem(DISMISSED_MOYSKLAD_KEY, JSON.stringify([...set]));
   },
 
-  // Страховка от случайного ✕ в очереди: задачу из МойСклад нельзя пересоздать вручную
-  // (в отличие от обычной), а Sync.pull() просто больше не покажет её, пока она в
-  // "скрытых". Set сохраняет порядок добавления, поэтому последний элемент массива —
-  // самый недавно скрытый; убираем именно его и просто досинхронизируемся.
-  restoreLastDismissedMoysklad() {
-    const arr = [...this.loadDismissedMoysklad()];
-    if (!arr.length) return null;
-    const last = arr.pop();
-    localStorage.setItem(DISMISSED_MOYSKLAD_KEY, JSON.stringify(arr));
-    return last;
+  // Отдельный (более узкий) список — только задачи, убранные через ✕ в очереди, а НЕ
+  // через обычное завершение ("Готово" тоже вызывает dismissMoysklad — иначе она бы
+  // воскресала на следующем pull). Если мешать оба случая в одном списке, "восстановить
+  // последнюю" может по ошибке вернуть уже честно завершённую задачу вместо реально
+  // удалённой по ошибке. Храним {id, title}, чтобы восстанавливать по названию, а не вслепую.
+  loadRemovedMoysklad() {
+    try {
+      return JSON.parse(localStorage.getItem(REMOVED_MOYSKLAD_KEY) || '[]');
+    } catch (e) {
+      return [];
+    }
+  },
+
+  markRemovedMoysklad(task) {
+    const arr = this.loadRemovedMoysklad();
+    arr.push({ id: task.id, title: task.title || task.productType || task.id });
+    localStorage.setItem(REMOVED_MOYSKLAD_KEY, JSON.stringify(arr));
+  },
+
+  // Убирает задачу и из "удалённых" (список для восстановления), и из общих "скрытых"
+  // (иначе следующий pull() тут же отфильтрует её обратно).
+  restoreDismissedMoysklad(id) {
+    const arr = this.loadRemovedMoysklad().filter(item => item.id !== id);
+    localStorage.setItem(REMOVED_MOYSKLAD_KEY, JSON.stringify(arr));
+    const dismissed = this.loadDismissedMoysklad();
+    dismissed.delete(id);
+    localStorage.setItem(DISMISSED_MOYSKLAD_KEY, JSON.stringify([...dismissed]));
   },
 
   // Вызывается из Store.save() после каждого изменения — с задержкой, чтобы не долбить

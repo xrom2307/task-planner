@@ -411,7 +411,10 @@ const Store = {
 
   removeTask(id) {
     const t = this.getTask(id);
-    if (t && t.source === 'moysklad' && typeof Sync !== 'undefined') Sync.dismissMoysklad(t.id);
+    if (t && t.source === 'moysklad' && typeof Sync !== 'undefined') {
+      Sync.dismissMoysklad(t.id);
+      Sync.markRemovedMoysklad(t);
+    }
     this.state.tasks = this.state.tasks.filter(t => t.id !== id);
     this.save();
   },

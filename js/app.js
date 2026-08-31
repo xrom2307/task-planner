@@ -127,6 +127,20 @@ function promptShirmaEngravingChoice() {
   return SHIRMA_ENGRAVING_OPTIONS[idx] || null;
 }
 
+// Список задач из МойСклад, удалённых через ✕ на этом устройстве (см. Store.removeTask/
+// Sync.markRemovedMoysklad) — по умолчанию предлагает САМУЮ ПОСЛЕДНЮЮ (частый случай:
+// один случайный тап), но по названию можно выбрать и более раннюю, если между делом
+// успел удалить/завершить что-то ещё.
+function promptRestoreMoyskladChoice() {
+  const items = Sync.loadRemovedMoysklad();
+  if (!items.length) return null;
+  const lines = items.map((it, i) => `${i + 1}) ${it.title}`);
+  const input = prompt(`Какую задачу вернуть?\n${lines.join('\n')}\nНомер (1-${items.length}):`, String(items.length));
+  if (input === null) return null;
+  const idx = parseInt(input, 10) - 1;
+  return items[idx] || null;
+}
+
 // Определяет, какой этап пойдёт следующим, если задачу сейчас завершить — с учётом
 // того, что задача из МойСклад может быть входом в локальную цепочку (см. MOYSKLAD_CHAIN_MAP).
 // Общая логика для suggestNextStage и для доBtn-проверки "нужен ли выбор станка ДО завершения".
@@ -238,7 +252,7 @@ function renderSyncBar() {
   }
 
   nowBtn.hidden = false;
-  restoreBtn.hidden = Sync.loadDismissedMoysklad().size === 0;
+  restoreBtn.hidden = Sync.loadRemovedMoysklad().length === 0;
   const labels = {
     idle: 'Синхронизация настроена',
     syncing: 'Синхронизируется…',
@@ -482,8 +496,9 @@ function initEvents() {
   });
 
   document.getElementById('restoreMoyskladBtn').addEventListener('click', async () => {
-    if (!confirm('Вернуть в очередь последнюю удалённую задачу из МойСклад?')) return;
-    Sync.restoreLastDismissedMoysklad();
+    const item = promptRestoreMoyskladChoice();
+    if (!item) return;
+    Sync.restoreDismissedMoysklad(item.id);
     await Sync.pull();
     renderAll();
   });
