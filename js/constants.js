@@ -51,7 +51,15 @@ const TASK_TEMPLATES = [
   { productType: 'Ширма (под печать)', stage: 'Шкурка после шпатлёвки', equipmentId: 'drum_sander' },
 
   { productType: 'Башня',            stage: 'Резка заготовки',   equipmentId: 'laser_big' },
+  { productType: 'Башня',            stage: 'Шлифовка',          equipmentId: 'drum_sander' },
   { productType: 'Башня',            stage: 'Сборка',            equipmentId: null, portable: true },
+
+  // МойСклад "резка арена с алькантарой" уже приезжает с наклеенной алькантарой —
+  // сама наклейка происходит раньше и МойСклад не отслеживается, но оставляем в
+  // шаблоне для порядка/ручного добавления. Цепочка стартует сразу с резки.
+  { productType: 'Арена',            stage: 'Наклейка алькантары', equipmentId: null },
+  { productType: 'Арена',            stage: 'Резка заготовки',   equipmentId: 'laser_big' },
+  { productType: 'Арена',            stage: 'Шлифовка',          equipmentId: 'drum_sander' },
 
   { productType: 'Подставка',        stage: 'Резка заготовки',   equipmentId: 'laser_big' },
   { productType: 'Подставка',        stage: 'Шкурка',            equipmentId: 'drum_sander' },
@@ -63,6 +71,17 @@ const TASK_TEMPLATES = [
   { productType: 'Счётчик',          stage: 'Шкурка',            equipmentId: 'drum_sander' },
   { productType: 'Счётчик',          stage: 'Сборка',            equipmentId: null, portable: true },
 
+  // Отдельный вариант — белый счётчик: красится ДО резки (заготовка ещё без гравировки),
+  // после красится каждая деталь режется/гравируется отдельным проходом (не альтернативы
+  // станка, а разные детали — секвенция), в конце шкурятся только задние стенки и
+  // шестерёнки (лицевые и внутренние остаются как есть после резки).
+  { productType: 'Счётчик (белый)',  stage: 'Покраска в белый',        equipmentId: null },
+  { productType: 'Счётчик (белый)',  stage: 'Резка лицевых',           equipmentId: 'laser_red' },
+  { productType: 'Счётчик (белый)',  stage: 'Резка задних',            equipmentId: 'laser_red' },
+  { productType: 'Счётчик (белый)',  stage: 'Резка шестерёнок',        equipmentId: 'laser_red' },
+  { productType: 'Счётчик (белый)',  stage: 'Резка внутренних',        equipmentId: 'laser_red' },
+  { productType: 'Счётчик (белый)',  stage: 'Шкурка задних и шестерёнок', equipmentId: 'drum_sander' },
+
   { productType: 'Трекер заклинаний', stage: 'Резка/гравировка (дерево)', equipmentId: 'laser_red' },
   { productType: 'Трекер заклинаний', stage: 'Металл (резка)',    equipmentId: 'fiber_laser' },
   { productType: 'Трекер заклинаний', stage: 'Покраска металла',  equipmentId: 'powder_coat' },
@@ -71,9 +90,15 @@ const TASK_TEMPLATES = [
 
   { productType: 'Трекер инициативы', stage: 'Резка (до 09:00)',  equipmentId: 'laser_red' },
 
-  { productType: 'Дайстрей (4мм)',   stage: 'Шкурка',             equipmentId: 'drum_sander' },
-  { productType: 'Дайстрей',         stage: 'Фрезеровка',         equipmentId: 'cnc_big' },
-  { productType: 'Дайстрей',         stage: 'Обработка кромки',   equipmentId: 'router' },
+  // Полный цикл ДТ (заготовка -> магниты -> склейка -> отлёжка -> чистовая обработка).
+  // МойСклад "заготовка дт" — это только первый шаг (фрезеровка), см. MOYSKLAD_CHAIN_MAP.
+  { productType: 'Дайстрей',         stage: 'Фрезеровка на ЧПУ',        equipmentId: 'cnc_big' },
+  { productType: 'Дайстрей',         stage: 'Лазерная резка (4мм)',     equipmentId: 'laser_big' },
+  { productType: 'Дайстрей',         stage: 'Вставка магнитов',         equipmentId: null, portable: true },
+  { productType: 'Дайстрей',         stage: 'Склейка',                  equipmentId: null, postWaitHours: 10 },
+  { productType: 'Дайстрей',         stage: 'Шкурка грубым зерном',     equipmentId: 'drum_sander' },
+  { productType: 'Дайстрей',         stage: 'Фрезеровка на фрезерном столе', equipmentId: 'router' },
+  { productType: 'Дайстрей',         stage: 'Шкурка мелким зерном',     equipmentId: 'hand_sander' },
 
   { productType: 'Дайсбокс',         stage: 'Фрезеровка',         equipmentId: 'cnc_big' },
   { productType: 'Дайсбокс',         stage: 'Обработка кромки',   equipmentId: 'router' },
@@ -130,6 +155,17 @@ const MOYSKLAD_CHAIN_MAP = [
     productType: 'Ширма', stage: 'Резка заготовки', equipmentId: 'laser_big' },
   { stageTest: s => s.includes('резка') && s.includes('ширм'), variantTest: v => v.includes('под печать'),
     productType: 'Ширма (под печать)', stage: 'Резка заготовки', equipmentId: 'laser_big' },
+  { stageTest: s => s.includes('башн'), variantTest: () => true,
+    productType: 'Башня', stage: 'Резка заготовки', equipmentId: 'laser_big' },
+  { stageTest: s => s.includes('арена'), variantTest: () => true,
+    productType: 'Арена', stage: 'Резка заготовки', equipmentId: 'laser_big' },
+  // "резка,гравировка,шкурка счётчиков" — до этого назначение по ошибке цепляло
+  // задачи под конкретные варианты ("ночной компас" и т.п.), которые на самом деле
+  // не твои; варианты этой цепочки не различаем, ловим по самому названию этапа.
+  { stageTest: s => s.includes('гравировка') && s.includes('шкурка'), variantTest: () => true,
+    productType: 'Счётчик (белый)', stage: 'Резка лицевых', equipmentId: 'laser_red' },
+  { stageTest: s => s.includes('заготовка дт'), variantTest: () => true,
+    productType: 'Дайстрей', stage: 'Фрезеровка на ЧПУ', equipmentId: 'cnc_big' },
 ];
 
 // Возвращает точку входа в локальную цепочку для завершённой задачи из МойСклад,
