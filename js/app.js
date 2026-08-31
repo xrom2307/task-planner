@@ -97,17 +97,34 @@ function renderUnloadBanner() {
 }
 
 // Предлагает длительность цикла: медиана по прошлым циклам этой же связки продукт/этап/станок,
-// иначе — просто пусто, пользователь вводит сам (сохранится как отправная точка на будущее).
+// иначе — известный ориентир самой задачи (например, у гравировки ширмы он задан вручную,
+// см. SHIRMA_ENGRAVING_OPTIONS), а если и его нет — пусто, пользователь вводит сам.
 function promptCycleDuration(loadTask) {
   const probe = Object.assign({}, loadTask, { kind: 'machine_cycle' });
   const sig = Store.signatureFor(probe);
   const perUnit = Store.medianPerUnitSec(sig);
-  const suggested = perUnit != null ? Math.round(perUnit * (loadTask.qty || 1) / 60) : '';
+  const suggested = perUnit != null ? Math.round(perUnit * (loadTask.qty || 1) / 60)
+    : (loadTask.estimateSec ? Math.round(loadTask.estimateSec / 60) : '');
   const input = prompt('Станок запущен. Сколько будет длиться цикл, минут?', suggested ? String(suggested) : '');
   if (input === null) return null;
   const minutes = parseFloat(input.replace(',', '.'));
   if (!Number.isFinite(minutes) || minutes <= 0) return null;
   return Math.round(minutes * 60);
+}
+
+// Гравировка ширмы — не взаимозаменяемые альтернативы станка, а разные по времени и
+// количеству проходов варианты (малый станок гравирует тремя проходами по секциям) — см.
+// SHIRMA_ENGRAVING_OPTIONS. Спрашиваем номер простым prompt(), как и остальные диалоги
+// приложения, вместо генерации отдельного этапа через nextTemplateStage.
+function promptShirmaEngravingChoice() {
+  const lines = SHIRMA_ENGRAVING_OPTIONS.map((opt, i) => {
+    const totalSec = opt.passes.reduce((sum, p) => sum + p.estimateSec, 0);
+    return `${i + 1}) ${opt.label} — ${Math.round(totalSec / 60)} мин`;
+  });
+  const input = prompt(`Гравировка ширмы — выбери станок:\n${lines.join('\n')}\nНомер (1-${SHIRMA_ENGRAVING_OPTIONS.length}):`, '1');
+  if (input === null) return null;
+  const idx = parseInt(input, 10) - 1;
+  return SHIRMA_ENGRAVING_OPTIONS[idx] || null;
 }
 
 // Подсказка после обычного завершения (без жёсткого тайм-гейта, поэтому не создаём
@@ -126,6 +143,24 @@ function suggestNextStage(completedTask, doneQty) {
 
   const next = nextTemplateStage(productType, stage, equipmentId);
   if (!next) return;
+
+  if (next.productType === 'Ширма' && next.stage === 'Гравировка') {
+    const choice = promptShirmaEngravingChoice();
+    if (!choice) return;
+    choice.passes.forEach(p => {
+      Store.addTask({
+        productType: 'Ширма',
+        stage: p.stage,
+        title: p.title || '',
+        equipmentId: choice.equipmentId,
+        source: chainStart ? 'manual' : completedTask.source,
+        qty: doneQty != null ? doneQty : completedTask.qty,
+        estimateSec: p.estimateSec,
+      });
+    });
+    return;
+  }
+
   const label = doneQty ? `${next.stage} (${doneQty} шт)` : next.stage;
   if (!confirm(`Готово. Добавить в очередь следующий этап — «${label}»?`)) return;
   Store.addTask({

@@ -32,9 +32,9 @@ const EQUIPMENT = [
 // Используется для подсказки станка при создании задачи и для расчёта медианы.
 const TASK_TEMPLATES = [
   { productType: 'Ширма',            stage: 'Резка заготовки',   equipmentId: 'laser_big' },
-  { productType: 'Ширма',            stage: 'Гравировка',        equipmentId: 'laser_red' },
-  { productType: 'Ширма',            stage: 'Гравировка',        equipmentId: 'laser_green' },
-  { productType: 'Ширма',            stage: 'Гравировка',        equipmentId: 'laser_small' },
+  { productType: 'Ширма',            stage: 'Гравировка',        equipmentId: 'laser_red',   estimateSec: 2160 },
+  { productType: 'Ширма',            stage: 'Гравировка',        equipmentId: 'laser_green', estimateSec: 2916 },
+  { productType: 'Ширма',            stage: 'Гравировка',        equipmentId: 'laser_small', estimateSec: 2060 },
   { productType: 'Ширма',            stage: 'Шкурка',            equipmentId: 'drum_sander' },
   { productType: 'Ширма',            stage: 'Шкурка вручную',    equipmentId: 'hand_sander' },
   { productType: 'Ширма',            stage: 'Продувка от пыли',  equipmentId: null },
@@ -177,6 +177,29 @@ function resolveMoyskladChainStart(msTask) {
   const entry = MOYSKLAD_CHAIN_MAP.find(e => e.stageTest(stage) && e.variantTest(variant));
   return entry ? { productType: entry.productType, stage: entry.stage, equipmentId: entry.equipmentId } : null;
 }
+
+// Гравировка ширмы — реально три РАЗНЫХ по времени варианта станка, а не взаимозаменяемые
+// альтернативы с одинаковым результатом: зелёный и красный гравируют целиком за один проход,
+// малый — только по частям (три последовательных прохода). Времена сняты вручную (не медиана),
+// поэтому задаются как фиксированный estimateSec на каждую создаваемую задачу-проход. См.
+// suggestNextStage в app.js — при выборе малого станка в очередь ставятся сразу 3 задачи подряд.
+const SHIRMA_ENGRAVING_OPTIONS = [
+  { equipmentId: 'laser_green', label: 'Зелёный станок (целиком)', passes: [
+    { stage: 'Гравировка', estimateSec: 2916 },
+  ] },
+  { equipmentId: 'laser_red', label: 'Красный станок (целиком)', passes: [
+    { stage: 'Гравировка', estimateSec: 2160 },
+  ] },
+  // Третий проход намеренно назван так же, как обычная "Гравировка" (а различие —
+  // только в title для отображения): это единственный способ, которым nextTemplateStage
+  // после него сам найдёт следующий этап (Шкурка) — первые два прохода такого продолжения
+  // получать не должны, они просто лежат в очереди друг за другом до третьего.
+  { equipmentId: 'laser_small', label: 'Малый станок (3 прохода)', passes: [
+    { stage: 'Гравировка (малый) — крайние секции', estimateSec: 880 },
+    { stage: 'Гравировка (малый) — средние секции', estimateSec: 510 },
+    { stage: 'Гравировка', title: 'Ширма — гравировка (малый, центр)', estimateSec: 670 },
+  ] },
+];
 
 // Типы продукции, которые можно СОБИРАТЬ на дежурстве, если материалы взяты заранее.
 const DUTY_PORTABLE_PRODUCTS = ['Башня', 'Счётчик', 'Трекер заклинаний', 'Ширма'];
