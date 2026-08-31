@@ -127,25 +127,31 @@ function promptShirmaEngravingChoice() {
   return SHIRMA_ENGRAVING_OPTIONS[idx] || null;
 }
 
+// Определяет, какой этап пойдёт следующим, если задачу сейчас завершить — с учётом
+// того, что задача из МойСклад может быть входом в локальную цепочку (см. MOYSKLAD_CHAIN_MAP).
+// Общая логика для suggestNextStage и для доBtn-проверки "нужен ли выбор станка ДО завершения".
+function resolveNextStage(task) {
+  const chainStart = task.source === 'moysklad' ? resolveMoyskladChainStart(task) : null;
+  const productType = chainStart ? chainStart.productType : task.productType;
+  const stage = chainStart ? chainStart.stage : task.stage;
+  const equipmentId = chainStart ? chainStart.equipmentId : task.equipmentId;
+  return { next: nextTemplateStage(productType, stage, equipmentId), chainStart };
+}
+
 // Подсказка после обычного завершения (без жёсткого тайм-гейта, поэтому не создаём
 // задачу автоматически — просто предлагаем, добавить можно/нет решаешь сам). Пригождается,
 // например, когда снял готовый модуль подрозетника со станка и параллельно зарядил
 // следующий в цикл — уже снятый модуль можно сразу поставить в очередь на шлифовку/склейку.
-function suggestNextStage(completedTask, doneQty) {
-  // Задача из МойСклад иногда — лишь первый шаг более длинного физического цикла,
-  // который дальше ведётся локально (резка ширмы под покраску/под печать — см.
-  // MOYSKLAD_CHAIN_MAP). В этом случае ищем следующий этап не по сырому названию
-  // этапа МойСклад, а по тому месту, куда он маппится в локальной цепочке продукта.
-  const chainStart = completedTask.source === 'moysklad' ? resolveMoyskladChainStart(completedTask) : null;
-  const productType = chainStart ? chainStart.productType : completedTask.productType;
-  const stage = chainStart ? chainStart.stage : completedTask.stage;
-  const equipmentId = chainStart ? chainStart.equipmentId : completedTask.equipmentId;
-
-  const next = nextTemplateStage(productType, stage, equipmentId);
+//
+// engravingChoice — если выбор станка для гравировки ширмы уже был сделан ЗАРАНЕЕ (см.
+// doneBtn), используем его вместо повторного prompt(): важно, чтобы диалог с выбором не
+// повторялся дважды и чтобы отмену можно было безопасно обработать ДО завершения задачи.
+function suggestNextStage(completedTask, doneQty, engravingChoice) {
+  const { next, chainStart } = resolveNextStage(completedTask);
   if (!next) return;
 
   if (next.productType === 'Ширма' && next.stage === 'Гравировка') {
-    const choice = promptShirmaEngravingChoice();
+    const choice = engravingChoice || promptShirmaEngravingChoice();
     if (!choice) return;
     choice.passes.forEach(p => {
       Store.addTask({
@@ -490,6 +496,17 @@ function initEvents() {
     const t = Store.currentTask();
     if (!t) return;
 
+    // Гравировка ширмы требует выбора станка — спрашиваем ДО завершения задачи, а не
+    // после (как обычно делает suggestNextStage), иначе отмена диалога (или его случайное
+    // закрытие на телефоне) оставляла бы задачу уже помеченной выполненной и убранной из
+    // очереди без всякого следующего этапа — она просто "терялась".
+    const { next: upcoming } = resolveNextStage(t);
+    let engravingChoice = null;
+    if (upcoming && upcoming.productType === 'Ширма' && upcoming.stage === 'Гравировка') {
+      engravingChoice = promptShirmaEngravingChoice();
+      if (!engravingChoice) return; // отмена — задача остаётся активной, ничего не потеряно
+    }
+
     let qtyDone = null;
     if (t.qty) {
       const input = prompt(`Сколько выполнено из ${t.qty}?`, String(t.qty));
@@ -509,7 +526,7 @@ function initEvents() {
       }
       Store.completeTask(t.id, qtyDone); // время загрузки/перезарядки — в статистику этой фазы
       Store.startCycle(t, durationSec);
-      suggestNextStage(t, qtyDone); // например: снятый модуль можно шлифовать, пока новый мелется
+      suggestNextStage(t, qtyDone, engravingChoice); // например: снятый модуль можно шлифовать, пока новый мелется
       renderAll();
       return;
     }
@@ -533,7 +550,7 @@ function initEvents() {
 
     Store.completeTask(t.id, qtyDone);
     maybeCreateCleanupTask(Store, t);
-    suggestNextStage(t, qtyDone);
+    suggestNextStage(t, qtyDone, engravingChoice);
     renderAll();
   });
 
