@@ -228,14 +228,17 @@ function nudgeTask(id, direction) {
 function renderSyncBar() {
   const text = document.getElementById('syncStatusText');
   const nowBtn = document.getElementById('syncNowBtn');
+  const restoreBtn = document.getElementById('restoreMoyskladBtn');
 
   if (!Sync.isConfigured()) {
     text.textContent = 'Синхронизация не настроена';
     nowBtn.hidden = true;
+    restoreBtn.hidden = true;
     return;
   }
 
   nowBtn.hidden = false;
+  restoreBtn.hidden = Sync.loadDismissedMoysklad().size === 0;
   const labels = {
     idle: 'Синхронизация настроена',
     syncing: 'Синхронизируется…',
@@ -474,6 +477,13 @@ function initEvents() {
   });
 
   document.getElementById('syncNowBtn').addEventListener('click', async () => {
+    await Sync.pull();
+    renderAll();
+  });
+
+  document.getElementById('restoreMoyskladBtn').addEventListener('click', async () => {
+    if (!confirm('Вернуть в очередь последнюю удалённую задачу из МойСклад?')) return;
+    Sync.restoreLastDismissedMoysklad();
     await Sync.pull();
     renderAll();
   });

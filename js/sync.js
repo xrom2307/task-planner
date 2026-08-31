@@ -107,6 +107,18 @@ const Sync = {
     localStorage.setItem(DISMISSED_MOYSKLAD_KEY, JSON.stringify([...set]));
   },
 
+  // Страховка от случайного ✕ в очереди: задачу из МойСклад нельзя пересоздать вручную
+  // (в отличие от обычной), а Sync.pull() просто больше не покажет её, пока она в
+  // "скрытых". Set сохраняет порядок добавления, поэтому последний элемент массива —
+  // самый недавно скрытый; убираем именно его и просто досинхронизируемся.
+  restoreLastDismissedMoysklad() {
+    const arr = [...this.loadDismissedMoysklad()];
+    if (!arr.length) return null;
+    const last = arr.pop();
+    localStorage.setItem(DISMISSED_MOYSKLAD_KEY, JSON.stringify(arr));
+    return last;
+  },
+
   // Вызывается из Store.save() после каждого изменения — с задержкой, чтобы не долбить
   // Apps Script на каждый чих (например, тикающий таймер сам по себе save() не дёргает,
   // но быстрая последовательность действий — пауза сразу после старта и т.п. — могла бы).
